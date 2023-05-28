@@ -11,12 +11,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'BLE Demo',
-    theme: ThemeData(
-      primarySwatch: Colors.blue,
-    ),
-    home: MyHomePage(title: 'Flutter BLE Demo'),
-  );
+        title: 'AVR window',
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+        ),
+        home: MyHomePage(title: 'AVR window'),
+      );
 }
 
 class MyHomePage extends StatefulWidget {
@@ -35,8 +35,11 @@ class MyHomePageState extends State<MyHomePage> {
   final _writeController = TextEditingController();
   BluetoothDevice? _connectedDevice;
   List<BluetoothService> _services = [];
+  BluetoothCharacteristic? writeHandler;
+  BluetoothCharacteristic? readHandler;
+  String windowState = "Нет данных";
 
-  _addDeviceTolist(final BluetoothDevice device) {
+  _addDeviceToList(final BluetoothDevice device) {
     if (!widget.devicesList.contains(device)) {
       setState(() {
         widget.devicesList.add(device);
@@ -51,12 +54,12 @@ class MyHomePageState extends State<MyHomePage> {
         .asStream()
         .listen((List<BluetoothDevice> devices) {
       for (BluetoothDevice device in devices) {
-        _addDeviceTolist(device);
+        _addDeviceToList(device);
       }
     });
     widget.flutterBlue.scanResults.listen((List<ScanResult> results) {
       for (ScanResult result in results) {
-        _addDeviceTolist(result.device);
+        _addDeviceToList(result.device);
       }
     });
     widget.flutterBlue.startScan();
@@ -73,14 +76,16 @@ class MyHomePageState extends State<MyHomePage> {
               Expanded(
                 child: Column(
                   children: <Widget>[
-                    Text(device.name == '' ? '(unknown device)' : device.name),
+                    Text(device.name == ''
+                        ? '(неизвестное устройство)'
+                        : device.name),
                     Text(device.id.toString()),
                   ],
                 ),
               ),
               TextButton(
                 child: const Text(
-                  'Connect',
+                  'Подключиться',
                   style: TextStyle(color: Colors.blue),
                 ),
                 onPressed: () async {
@@ -125,7 +130,8 @@ class MyHomePageState extends State<MyHomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: TextButton(
-              child: const Text('READ', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('Прочитать', style: TextStyle(color: Colors.blue)),
               onPressed: () async {
                 var sub = characteristic.value.listen((value) {
                   setState(() {
@@ -141,6 +147,8 @@ class MyHomePageState extends State<MyHomePage> {
       );
     }
     if (characteristic.properties.write) {
+      writeHandler = characteristic;
+
       buttons.add(
         ButtonTheme(
           minWidth: 10,
@@ -148,13 +156,14 @@ class MyHomePageState extends State<MyHomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ElevatedButton(
-              child: const Text('WRITE', style: TextStyle(color: Colors.white)),
+              child: const Text('Отправить',
+                  style: TextStyle(color: Colors.white)),
               onPressed: () async {
                 await showDialog(
                     context: context,
                     builder: (BuildContext context) {
                       return AlertDialog(
-                        title: const Text("Write"),
+                        title: const Text("Отправить"),
                         content: Row(
                           children: <Widget>[
                             Expanded(
@@ -166,7 +175,7 @@ class MyHomePageState extends State<MyHomePage> {
                         ),
                         actions: <Widget>[
                           TextButton(
-                            child: const Text("Send"),
+                            child: const Text("Отправить"),
                             onPressed: () {
                               characteristic.write(
                                   utf8.encode(_writeController.value.text));
@@ -174,7 +183,7 @@ class MyHomePageState extends State<MyHomePage> {
                             },
                           ),
                           TextButton(
-                            child: const Text("Cancel"),
+                            child: const Text("Закрыть"),
                             onPressed: () {
                               Navigator.pop(context);
                             },
@@ -189,6 +198,24 @@ class MyHomePageState extends State<MyHomePage> {
       );
     }
     if (characteristic.properties.notify) {
+      characteristic.value.listen((value) {
+        setState(() {
+          String result = String.fromCharCodes(value);
+          switch (result.toLowerCase()) {
+            case "":
+              windowState = "Нет данных";
+              break;
+            case "o":
+              windowState = "Окно открыто";
+              break;
+            case "c":
+              windowState = "Окно закрыто";
+              break;
+          }
+        });
+      });
+      characteristic.setNotifyValue(true);
+
       buttons.add(
         ButtonTheme(
           minWidth: 10,
@@ -196,8 +223,8 @@ class MyHomePageState extends State<MyHomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ElevatedButton(
-              child:
-              const Text('NOTIFY', style: TextStyle(color: Colors.white)),
+              child: const Text('Получение данных',
+                  style: TextStyle(color: Colors.white)),
               onPressed: () async {
                 characteristic.value.listen((value) {
                   setState(() {
@@ -222,39 +249,74 @@ class MyHomePageState extends State<MyHomePage> {
       List<Widget> characteristicsWidget = <Widget>[];
 
       for (BluetoothCharacteristic characteristic in service.characteristics) {
-        characteristicsWidget.add(
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Column(
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text(characteristic.uuid.toString(),
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Row(
-                  children: <Widget>[
-                    ..._buildReadWriteNotifyButton(characteristic),
-                  ],
-                ),
-                Row(
-                  children: <Widget>[
-                    Text('Value: ${widget.readValues[characteristic.uuid]}'),
-                  ],
-                ),
-                const Divider(),
-              ],
+        if (characteristic.properties.write ||
+            characteristic.properties.read ||
+            characteristic.properties.notify) {
+          characteristicsWidget.add(
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Text(characteristic.uuid.toString(),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  Row(
+                    children: <Widget>[
+                      ..._buildReadWriteNotifyButton(characteristic),
+                    ],
+                  ),
+                  Row(
+                    children: <Widget>[
+                      Text(
+                          'Значение: ${String.fromCharCodes(widget.readValues[characteristic.uuid] ?? [])}'),
+                    ],
+                  ),
+                  const Divider(),
+                ],
+              ),
             ),
-          ),
+          );
+        }
+      }
+      if (characteristicsWidget.isNotEmpty) {
+        containers.add(
+          ExpansionTile(
+              title: Text(service.uuid.toString()),
+              children: characteristicsWidget),
         );
       }
-      containers.add(
-        ExpansionTile(
-            title: Text(service.uuid.toString()),
-            children: characteristicsWidget),
-      );
     }
+
+    containers
+        .add(Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+      ElevatedButton(
+          onPressed: () {
+            writeHandler?.write(utf8.encode("o"));
+          },
+          child: const Text("Открыть окно")),
+      ElevatedButton(
+          onPressed: () {
+            writeHandler?.write(utf8.encode("c"));
+          },
+          child: const Text("Закрыть окно"))
+    ]));
+
+    containers.add(Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+          Text("Состояние: $windowState",
+              style: const TextStyle(color: Colors.black, fontSize: 16)),
+          Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: ElevatedButton(
+                  onPressed: () {
+                    writeHandler?.write(utf8.encode("s"));
+                  },
+                  child: const Text("Обновить")))
+        ])));
 
     return ListView(
       padding: const EdgeInsets.all(8),
@@ -273,9 +335,9 @@ class MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.title),
-    ),
-    body: _buildView(),
-  );
+        appBar: AppBar(
+          title: Text(widget.title),
+        ),
+        body: _buildView(),
+      );
 }
