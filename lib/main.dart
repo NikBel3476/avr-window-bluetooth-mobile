@@ -38,6 +38,7 @@ class MyHomePageState extends State<MyHomePage> {
   BluetoothCharacteristic? writeHandler;
   BluetoothCharacteristic? readHandler;
   String windowState = "Нет данных";
+  DateTime timeState = DateTime.now();
 
   _addDeviceToList(final BluetoothDevice device) {
     if (!widget.devicesList.contains(device)) {
@@ -200,17 +201,20 @@ class MyHomePageState extends State<MyHomePage> {
     if (characteristic.properties.notify) {
       characteristic.value.listen((value) {
         setState(() {
-          String result = String.fromCharCodes(value);
-          switch (result.toLowerCase()) {
-            case "":
-              windowState = "Нет данных";
-              break;
-            case "o":
-              windowState = "Окно открыто";
-              break;
-            case "c":
-              windowState = "Окно закрыто";
-              break;
+          var responseMessage = String.fromCharCodes(value).toLowerCase();
+          if (responseMessage == "o") {
+            windowState = "Окно открыто";
+          } else if (responseMessage == "c") {
+            windowState = "Окно закрыто";
+          } else if (responseMessage.startsWith("t")) {
+            final timeBytes = utf8.encode(responseMessage.substring(1));
+            final byteData =
+                ByteData.sublistView(Uint8List.fromList(timeBytes));
+            final seconds = byteData.getInt32(0);
+            final minutes = seconds ~/ 60;
+            final hours = minutes ~/ 60;
+            timeState = timeState.copyWith(
+                hour: hours, minute: minutes % 60, second: seconds % 60);
           }
         });
       });
@@ -312,8 +316,23 @@ class MyHomePageState extends State<MyHomePage> {
           Padding(
               padding: const EdgeInsets.only(left: 16),
               child: ElevatedButton(
-                  onPressed: () {
-                    writeHandler?.write(utf8.encode("s"));
+                  onPressed: () async {
+                    await writeHandler?.write(utf8.encode("s"));
+                  },
+                  child: const Text("Обновить")))
+        ])));
+
+    containers.add(Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+          Text(
+              "Время: ${timeState.hour}:${timeState.minute}:${timeState.second}",
+              style: const TextStyle(color: Colors.black, fontSize: 16)),
+          Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: ElevatedButton(
+                  onPressed: () async {
+                    await writeHandler?.write(utf8.encode("t"));
                   },
                   child: const Text("Обновить")))
         ])));
