@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:intl/intl.dart';
 
 void main() => runApp(const MyApp());
 
@@ -37,8 +40,8 @@ class MyHomePageState extends State<MyHomePage> {
   List<BluetoothService> _services = [];
   BluetoothCharacteristic? writeHandler;
   BluetoothCharacteristic? readHandler;
-  String windowState = "Нет данных";
-  DateTime timeState = DateTime.now();
+  String _windowState = "Нет данных";
+  DateTime _timeState = DateTime.now();
 
   _addDeviceToList(final BluetoothDevice device) {
     if (!widget.devicesList.contains(device)) {
@@ -64,6 +67,9 @@ class MyHomePageState extends State<MyHomePage> {
       }
     });
     widget.flutterBlue.startScan();
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      writeHandler?.write(utf8.encode("t;"));
+    });
   }
 
   ListView _buildListViewOfDevices() {
@@ -90,7 +96,7 @@ class MyHomePageState extends State<MyHomePage> {
                   style: TextStyle(color: Colors.blue),
                 ),
                 onPressed: () async {
-                  widget.flutterBlue.stopScan();
+                  await widget.flutterBlue.stopScan();
                   try {
                     await device.connect();
                   } on PlatformException catch (e) {
@@ -123,7 +129,52 @@ class MyHomePageState extends State<MyHomePage> {
       BluetoothCharacteristic characteristic) {
     List<ButtonTheme> buttons = <ButtonTheme>[];
 
+    void readCharacteristic(BluetoothCharacteristic characteristic) async {
+      // var value = await characteristic.read();
+      // setState(() {
+      //   widget.readValues[characteristic.uuid] = value;
+      // });
+    }
+
+    void initWriteHandler(BluetoothCharacteristic characteristic) {
+      writeHandler = characteristic;
+    }
+
+    void notificationsSubscribe(BluetoothCharacteristic characteristic) async {
+      characteristic.value.listen((value) {
+        if (value.isNotEmpty) {
+          setState(() {
+            widget.readValues[characteristic.uuid] = value;
+          });
+          var responseMessage = String.fromCharCodes(value);
+          if (responseMessage == "o") {
+            setState(() {
+              _windowState = "Окно открыто";
+            });
+          } else if (responseMessage == "c") {
+            setState(() {
+              _windowState = "Окно закрыто";
+            });
+          } else if (responseMessage.startsWith("t")) {
+            final timeBytes = utf8.encode(responseMessage.substring(1));
+            final byteData =
+                ByteData.sublistView(Uint8List.fromList(timeBytes));
+            final seconds = byteData.getInt32(0);
+            final minutes = seconds ~/ 60;
+            final hours = minutes ~/ 60;
+            setState(() {
+              _timeState = _timeState.copyWith(
+                  hour: hours, minute: minutes % 60, second: seconds % 60);
+            });
+          }
+        }
+      });
+      await characteristic.setNotifyValue(true);
+    }
+
     if (characteristic.properties.read) {
+      readCharacteristic(characteristic);
+
       buttons.add(
         ButtonTheme(
           minWidth: 10,
@@ -132,15 +183,10 @@ class MyHomePageState extends State<MyHomePage> {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: TextButton(
               child:
-                  const Text('Прочитать', style: TextStyle(color: Colors.blue)),
+                  const Text('Обновить', style: TextStyle(color: Colors.blue)),
               onPressed: () async {
-                var sub = characteristic.value.listen((value) {
-                  setState(() {
-                    widget.readValues[characteristic.uuid] = value;
-                  });
-                });
-                await characteristic.read();
-                sub.cancel();
+                widget.readValues[characteristic.uuid] =
+                    await characteristic.read();
               },
             ),
           ),
@@ -148,7 +194,7 @@ class MyHomePageState extends State<MyHomePage> {
       );
     }
     if (characteristic.properties.write) {
-      writeHandler = characteristic;
+      initWriteHandler(characteristic);
 
       buttons.add(
         ButtonTheme(
@@ -199,27 +245,7 @@ class MyHomePageState extends State<MyHomePage> {
       );
     }
     if (characteristic.properties.notify) {
-      characteristic.value.listen((value) {
-        setState(() {
-          var responseMessage = String.fromCharCodes(value).toLowerCase();
-          if (responseMessage == "o") {
-            windowState = "Окно открыто";
-          } else if (responseMessage == "c") {
-            windowState = "Окно закрыто";
-          } else if (responseMessage.startsWith("t")) {
-            final timeBytes = utf8.encode(responseMessage.substring(1));
-            final byteData =
-                ByteData.sublistView(Uint8List.fromList(timeBytes));
-            final seconds = byteData.getInt32(0);
-            final minutes = seconds ~/ 60;
-            final hours = minutes ~/ 60;
-            timeState = timeState.copyWith(
-                hour: hours, minute: minutes % 60, second: seconds % 60);
-          }
-        });
-      });
-      characteristic.setNotifyValue(true);
-
+      notificationsSubscribe(characteristic);
       buttons.add(
         ButtonTheme(
           minWidth: 10,
@@ -230,12 +256,11 @@ class MyHomePageState extends State<MyHomePage> {
               child: const Text('Получение данных',
                   style: TextStyle(color: Colors.white)),
               onPressed: () async {
-                characteristic.value.listen((value) {
-                  setState(() {
-                    widget.readValues[characteristic.uuid] = value;
-                  });
-                });
-                await characteristic.setNotifyValue(true);
+                // characteristic.value.listen((value) {
+                //   setState(() {
+                //     widget.readValues[characteristic.uuid] = value;
+                //   });
+                // });
               },
             ),
           ),
@@ -248,6 +273,23 @@ class MyHomePageState extends State<MyHomePage> {
 
   ListView _buildConnectDeviceView() {
     List<Widget> containers = <Widget>[];
+
+    void onTimeSelectButtonTap(BuildContext context) async {
+      var timeOfDay = TimeOfDay.fromDateTime(_timeState);
+      final selectedTime = await showTimePicker(
+        context: context,
+        initialTime: timeOfDay,
+      );
+      if (selectedTime != null &&
+          selectedTime != TimeOfDay.fromDateTime(_timeState)) {
+        var totalSeconds = selectedTime.hour * 3600 + selectedTime.minute * 60;
+        var timeByteList = Uint8List(4)
+          ..buffer.asByteData().setInt32(0, totalSeconds, Endian.big);
+        var prefix = Uint8List.fromList(utf8.encode('u'));
+        var postfix = Uint8List.fromList(utf8.encode(';'));
+        await writeHandler?.write([...prefix, ...timeByteList, ...postfix]);
+      }
+    }
 
     for (BluetoothService service in _services) {
       List<Widget> characteristicsWidget = <Widget>[];
@@ -275,7 +317,7 @@ class MyHomePageState extends State<MyHomePage> {
                   Row(
                     children: <Widget>[
                       Text(
-                          'Значение: ${String.fromCharCodes(widget.readValues[characteristic.uuid] ?? [])}'),
+                          '${String.fromCharCodes(widget.readValues[characteristic.uuid] ?? [])}${widget.readValues[characteristic.uuid] ?? []}')
                     ],
                   ),
                   const Divider(),
@@ -298,12 +340,12 @@ class MyHomePageState extends State<MyHomePage> {
         .add(Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
       ElevatedButton(
           onPressed: () {
-            writeHandler?.write(utf8.encode("o"));
+            writeHandler?.write(utf8.encode("o;"));
           },
           child: const Text("Открыть окно")),
       ElevatedButton(
           onPressed: () {
-            writeHandler?.write(utf8.encode("c"));
+            writeHandler?.write(utf8.encode("c;"));
           },
           child: const Text("Закрыть окно"))
     ]));
@@ -311,13 +353,13 @@ class MyHomePageState extends State<MyHomePage> {
     containers.add(Padding(
         padding: const EdgeInsets.only(top: 24),
         child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-          Text("Состояние: $windowState",
+          Text("Состояние: $_windowState",
               style: const TextStyle(color: Colors.black, fontSize: 16)),
           Padding(
               padding: const EdgeInsets.only(left: 16),
               child: ElevatedButton(
                   onPressed: () async {
-                    await writeHandler?.write(utf8.encode("s"));
+                    await writeHandler?.write(utf8.encode("s;"));
                   },
                   child: const Text("Обновить")))
         ])));
@@ -325,17 +367,27 @@ class MyHomePageState extends State<MyHomePage> {
     containers.add(Padding(
         padding: const EdgeInsets.only(top: 24),
         child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-          Text(
-              "Время: ${timeState.hour}:${timeState.minute}:${timeState.second}",
+          Text("Время: ${DateFormat("HH:mm:ss").format(_timeState)}",
               style: const TextStyle(color: Colors.black, fontSize: 16)),
           Padding(
               padding: const EdgeInsets.only(left: 16),
               child: ElevatedButton(
                   onPressed: () async {
-                    await writeHandler?.write(utf8.encode("t"));
+                    await writeHandler?.write(utf8.encode("t;"));
                   },
                   child: const Text("Обновить")))
         ])));
+
+    containers.add(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () => onTimeSelectButtonTap(context),
+          child: const Text('Изменить время'),
+        ),
+      ),
+    );
 
     return ListView(
       padding: const EdgeInsets.all(8),
