@@ -40,8 +40,10 @@ class MyHomePageState extends State<MyHomePage> {
   List<BluetoothService> _services = [];
   BluetoothCharacteristic? writeHandler;
   BluetoothCharacteristic? readHandler;
+  Timer? _timer;
   String _windowState = "Нет данных";
   DateTime _timeState = DateTime.now();
+  bool _isTimeModeEnable = false;
 
   _addDeviceToList(final BluetoothDevice device) {
     if (!widget.devicesList.contains(device)) {
@@ -67,9 +69,15 @@ class MyHomePageState extends State<MyHomePage> {
       }
     });
     widget.flutterBlue.startScan();
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       writeHandler?.write(utf8.encode("t;"));
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _timer?.cancel();
   }
 
   ListView _buildListViewOfDevices() {
@@ -165,6 +173,14 @@ class MyHomePageState extends State<MyHomePage> {
             setState(() {
               _timeState = _timeState.copyWith(
                   hour: hours, minute: minutes % 60, second: seconds % 60);
+            });
+          } else if (responseMessage.startsWith("enable_ok")) {
+            setState(() {
+              _isTimeModeEnable = true;
+            });
+          } else if (responseMessage.startsWith("disable_ok")) {
+            setState(() {
+              _isTimeModeEnable = false;
             });
           }
         }
@@ -291,6 +307,41 @@ class MyHomePageState extends State<MyHomePage> {
       }
     }
 
+    void onTimeModeButtonTap(BuildContext context) async {
+      final selectedActiveTime = await showTimePicker(
+          context: context,
+          helpText: "Время в открытом положении",
+          initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+
+      final selectedDelayTime = await showTimePicker(
+          context: context,
+          helpText: "Время в закрытом положении",
+          initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+
+      if (selectedActiveTime != null && selectedDelayTime != null) {
+        var activeTimeSeconds =
+            selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
+        var delayTimeSeconds =
+            selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
+        var activeTimeBytes = Uint8List(4)
+          ..buffer.asByteData().setInt32(0, activeTimeSeconds, Endian.big);
+        var delayTimeBytes = Uint8List(4)
+          ..buffer.asByteData().setInt32(0, delayTimeSeconds, Endian.big);
+        var prefix = Uint8List.fromList(utf8.encode('r'));
+        var postfix = Uint8List.fromList(utf8.encode(';'));
+        await writeHandler?.write(
+            [...prefix, ...activeTimeBytes, ...delayTimeBytes, ...postfix]);
+      }
+    }
+
+    void onTimeModeDisableButtonTap(bool? _) async {
+      if (_isTimeModeEnable) {
+        await writeHandler?.write(utf8.encode('d'));
+      } else {
+        await writeHandler?.write(utf8.encode('e'));
+      }
+    }
+
     for (BluetoothService service in _services) {
       List<Widget> characteristicsWidget = <Widget>[];
 
@@ -388,6 +439,26 @@ class MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
+
+    containers.add(Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: () => onTimeModeButtonTap(context),
+        child: const Text('Установить режим работы'),
+      ),
+    ));
+
+    containers.add(Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+        Text(
+          'Работать по режиму',
+        ),
+        Checkbox(
+            onChanged: onTimeModeDisableButtonTap, value: _isTimeModeEnable),
+      ]),
+    ));
 
     return ListView(
       padding: const EdgeInsets.all(8),
