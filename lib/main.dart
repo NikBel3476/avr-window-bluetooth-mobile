@@ -43,7 +43,8 @@ class MyHomePageState extends State<MyHomePage> {
   Timer? _timer;
   String _windowState = "Нет данных";
   DateTime _timeState = DateTime.now();
-  bool _isTimeModeEnable = false;
+  bool _isTimeModeEnabled = false;
+  bool _isScheduleEnabled = false;
 
   _addDeviceToList(final BluetoothDevice device) {
     if (!widget.devicesList.contains(device)) {
@@ -174,13 +175,21 @@ class MyHomePageState extends State<MyHomePage> {
               _timeState = _timeState.copyWith(
                   hour: hours, minute: minutes % 60, second: seconds % 60);
             });
-          } else if (responseMessage.startsWith("enable_ok")) {
+          } else if (responseMessage == "enable_ok") {
             setState(() {
-              _isTimeModeEnable = true;
+              _isTimeModeEnabled = true;
             });
-          } else if (responseMessage.startsWith("disable_ok")) {
+          } else if (responseMessage == "disable_ok") {
             setState(() {
-              _isTimeModeEnable = false;
+              _isTimeModeEnabled = false;
+            });
+          } else if (responseMessage == "schedule_enabled") {
+            setState(() {
+              _isScheduleEnabled = true;
+            });
+          } else if (responseMessage == "schedule_disabled") {
+            setState(() {
+              _isScheduleEnabled = false;
             });
           }
         }
@@ -322,7 +331,7 @@ class MyHomePageState extends State<MyHomePage> {
         var activeTimeSeconds =
             selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
         var delayTimeSeconds =
-            selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
+            selectedDelayTime.hour * 3600 + selectedDelayTime.minute * 60;
         var activeTimeBytes = Uint8List(4)
           ..buffer.asByteData().setInt32(0, activeTimeSeconds, Endian.big);
         var delayTimeBytes = Uint8List(4)
@@ -334,11 +343,48 @@ class MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    void onTimeModeDisableButtonTap(bool? _) async {
-      if (_isTimeModeEnable) {
+    void onTimeModeCheckboxChange(bool? _) async {
+      if (_isTimeModeEnabled) {
         await writeHandler?.write(utf8.encode('d'));
       } else {
         await writeHandler?.write(utf8.encode('e'));
+      }
+    }
+
+    void onScheduleCheckboxChange(bool? _) async {
+      if (_isScheduleEnabled) {
+        await writeHandler?.write(utf8.encode('disable_schedule'));
+      } else {
+        await writeHandler?.write(utf8.encode('enable_schedule'));
+      }
+    }
+
+    void onSetScheduleButtonTap(BuildContext context) async {
+      final selectedOpenTime = await showTimePicker(
+          context: context,
+          helpText: "Время открытия",
+          initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+
+      if (selectedOpenTime != null) {
+        final selectedCloseTime = await showTimePicker(
+            context: context,
+            helpText: "Время закрытия",
+            initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+
+        if (selectedCloseTime != null) {
+          var openTimeSeconds =
+              selectedOpenTime.hour * 3600 + selectedOpenTime.minute * 60;
+          var closeTimeSeconds =
+              selectedCloseTime.hour * 3600 + selectedCloseTime.minute * 60;
+          var activeTimeBytes = Uint8List(4)
+            ..buffer.asByteData().setInt32(0, openTimeSeconds, Endian.big);
+          var delayTimeBytes = Uint8List(4)
+            ..buffer.asByteData().setInt32(0, closeTimeSeconds, Endian.big);
+          var prefix = Uint8List.fromList(utf8.encode('h'));
+          var postfix = Uint8List.fromList(utf8.encode(';'));
+          await writeHandler?.write(
+              [...prefix, ...activeTimeBytes, ...delayTimeBytes, ...postfix]);
+        }
       }
     }
 
@@ -387,83 +433,115 @@ class MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    containers
-        .add(Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-      ElevatedButton(
-          onPressed: () {
-            writeHandler?.write(utf8.encode("o;"));
-          },
-          child: const Text("Открыть окно")),
-      ElevatedButton(
-          onPressed: () {
-            writeHandler?.write(utf8.encode("c;"));
-          },
-          child: const Text("Закрыть окно"))
-    ]));
-
-    containers.add(Padding(
-        padding: const EdgeInsets.only(top: 24),
-        child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-          Text("Состояние: $_windowState",
-              style: const TextStyle(color: Colors.black, fontSize: 16)),
-          Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: ElevatedButton(
-                  onPressed: () async {
-                    await writeHandler?.write(utf8.encode("s;"));
-                  },
-                  child: const Text("Обновить")))
-        ])));
-
-    containers.add(Padding(
-        padding: const EdgeInsets.only(top: 24),
-        child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-          Text("Время: ${DateFormat("HH:mm:ss").format(_timeState)}",
-              style: const TextStyle(color: Colors.black, fontSize: 16)),
-          Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: ElevatedButton(
-                  onPressed: () async {
-                    await writeHandler?.write(utf8.encode("t;"));
-                  },
-                  child: const Text("Обновить")))
-        ])));
-
-    containers.add(
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15),
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: () => onTimeSelectButtonTap(context),
-          child: const Text('Изменить время'),
-        ),
-      ),
-    );
-
-    containers.add(Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => onTimeModeButtonTap(context),
-        child: const Text('Установить режим работы'),
-      ),
-    ));
-
-    containers.add(Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
-        Text(
-          'Работать по режиму',
-        ),
-        Checkbox(
-            onChanged: onTimeModeDisableButtonTap, value: _isTimeModeEnable),
-      ]),
-    ));
+    // containers.add(Padding(
+    //     padding: const EdgeInsets.symmetric(horizontal: 15),
+    //     child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+    //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    //         const Text('Часы'),
+    //         NumberPicker(
+    //             minValue: 0,
+    //             maxValue: 24,
+    //             value: 0,
+    //             axis: Axis.vertical,
+    //             onChanged: (_) {}),
+    //       ]),
+    //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    //         const Text('Минуты'),
+    //         NumberPicker(
+    //             minValue: 0,
+    //             maxValue: 60,
+    //             value: 0,
+    //             axis: Axis.vertical,
+    //             onChanged: (_) {})
+    //       ])
+    //     ])));
 
     return ListView(
       padding: const EdgeInsets.all(8),
       children: <Widget>[
         ...containers,
+        Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+          ElevatedButton(
+              onPressed: () {
+                writeHandler?.write(utf8.encode("o;"));
+              },
+              child: const Text("Открыть окно")),
+          ElevatedButton(
+              onPressed: () {
+                writeHandler?.write(utf8.encode("c;"));
+              },
+              child: const Text("Закрыть окно"))
+        ]),
+        Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+              Text("Состояние: $_windowState",
+                  style: const TextStyle(color: Colors.black, fontSize: 16)),
+              Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: ElevatedButton(
+                      onPressed: () async {
+                        await writeHandler?.write(utf8.encode("s;"));
+                      },
+                      child: const Text("Обновить")))
+            ])),
+        Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+              Text("Время: ${DateFormat("HH:mm:ss").format(_timeState)}",
+                  style: const TextStyle(color: Colors.black, fontSize: 16)),
+              Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: ElevatedButton(
+                      onPressed: () async {
+                        await writeHandler?.write(utf8.encode("t;"));
+                      },
+                      child: const Text("Обновить")))
+            ])),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => onTimeSelectButtonTap(context),
+            child: const Text('Изменить время'),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => onTimeModeButtonTap(context),
+            child: const Text('Установить режим работы'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+            const Text(
+              'Работать по режиму',
+            ),
+            Checkbox(
+                onChanged: onTimeModeCheckboxChange, value: _isTimeModeEnabled),
+          ]),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => onSetScheduleButtonTap(context),
+            child: const Text('Установить расписание'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15),
+          child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
+            const Text(
+              'Работать по расписанию',
+            ),
+            Checkbox(
+                onChanged: onScheduleCheckboxChange, value: _isScheduleEnabled),
+          ]),
+        )
       ],
     );
   }
