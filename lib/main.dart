@@ -1,4 +1,4 @@
-import 'package:avr_bluetooth/widgets/ConnectedDeviceView.dart';
+import 'package:avr_bluetooth/widgets/connected_device_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -77,6 +77,22 @@ class MyHomePageState extends State<MyHomePage> {
     // _timer?.cancel();
   }
 
+  void onDeviceConnectButtonTap(BluetoothDevice device) async {
+    await widget.flutterBlue.stopScan();
+    try {
+      await device.connect();
+    } on PlatformException catch (e) {
+      if (e.code != 'already_connected') {
+        rethrow;
+      }
+    } finally {
+      _services = await device.discoverServices();
+    }
+    setState(() {
+      _connectedDevice = device;
+    });
+  }
+
   ListView _buildListViewOfDevices() {
     List<Widget> containers = <Widget>[];
     for (BluetoothDevice device in widget.devicesList) {
@@ -96,26 +112,11 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               TextButton(
-                child: const Text(
-                  'Подключиться',
-                  style: TextStyle(color: Colors.blue),
-                ),
-                onPressed: () async {
-                  await widget.flutterBlue.stopScan();
-                  try {
-                    await device.connect();
-                  } on PlatformException catch (e) {
-                    if (e.code != 'already_connected') {
-                      rethrow;
-                    }
-                  } finally {
-                    _services = await device.discoverServices();
-                  }
-                  setState(() {
-                    _connectedDevice = device;
-                  });
-                },
-              ),
+                  child: const Text(
+                    'Подключиться',
+                    style: TextStyle(color: Colors.blue),
+                  ),
+                  onPressed: () => onDeviceConnectButtonTap(device)),
             ],
           ),
         ),
@@ -499,7 +500,9 @@ class MyHomePageState extends State<MyHomePage> {
     if (_connectedDevice != null) {
       return ConnectedDeviceView(services: _services);
     }
-    return _buildListViewOfDevices();
+    return AvailableDevicesList(
+        deviceList: widget.devicesList,
+        onDeviceConnectButtonTap: onDeviceConnectButtonTap);
   }
 
   @override
