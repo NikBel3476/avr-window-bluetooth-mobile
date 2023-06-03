@@ -1,3 +1,4 @@
+import 'package:avr_bluetooth/widgets/available_device_list.dart';
 import 'package:avr_bluetooth/widgets/connected_device_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -93,55 +94,55 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  ListView _buildListViewOfDevices() {
-    List<Widget> containers = <Widget>[];
-    for (BluetoothDevice device in widget.devicesList) {
-      containers.add(
-        SizedBox(
-          height: 50,
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  children: <Widget>[
-                    Text(device.name == ''
-                        ? '(неизвестное устройство)'
-                        : device.name),
-                    Text(device.id.toString()),
-                  ],
-                ),
-              ),
-              TextButton(
-                  child: const Text(
-                    'Подключиться',
-                    style: TextStyle(color: Colors.blue),
-                  ),
-                  onPressed: () => onDeviceConnectButtonTap(device)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(8),
-      children: <Widget>[
-        ...containers,
-      ],
-    );
-  }
-
+  // ListView _buildListViewOfDevices() {
+  //   List<Widget> containers = <Widget>[];
+  //   for (BluetoothDevice device in widget.devicesList) {
+  //     containers.add(
+  //       SizedBox(
+  //         height: 50,
+  //         child: Row(
+  //           children: <Widget>[
+  //             Expanded(
+  //               child: Column(
+  //                 children: <Widget>[
+  //                   Text(device.name == ''
+  //                       ? '(неизвестное устройство)'
+  //                       : device.name),
+  //                   Text(device.id.toString()),
+  //                 ],
+  //               ),
+  //             ),
+  //             TextButton(
+  //                 child: const Text(
+  //                   'Подключиться',
+  //                   style: TextStyle(color: Colors.blue),
+  //                 ),
+  //                 onPressed: () => onDeviceConnectButtonTap(device)),
+  //           ],
+  //         ),
+  //       ),
+  //     );
+  //   }
+  //
+  //   return ListView(
+  //     padding: const EdgeInsets.all(8),
+  //     children: <Widget>[
+  //       ...containers,
+  //     ],
+  //   );
+  // }
+  //
   // List<ButtonTheme> _buildReadWriteNotifyButton(
   //     BluetoothCharacteristic characteristic) {
   //   List<ButtonTheme> buttons = <ButtonTheme>[];
-
-  // void readCharacteristic(BluetoothCharacteristic characteristic) async {
-  //   // var value = await characteristic.read();
-  //   // setState(() {
-  //   //   widget.readValues[characteristic.uuid] = value;
-  //   // });
-  // }
-
+  //
+  //   void readCharacteristic(BluetoothCharacteristic characteristic) async {
+  //     var value = await characteristic.read();
+  //     setState(() {
+  //       widget.readValues[characteristic.uuid] = value;
+  //     });
+  //   }
+  //
   //   void initWriteHandler(BluetoothCharacteristic characteristic) {
   //     writeHandler = characteristic;
   //   }
@@ -293,7 +294,7 @@ class MyHomePageState extends State<MyHomePage> {
   //
   //   return buttons;
   // }
-
+  //
   // ListView _buildConnectDeviceView() {
   //   List<Widget> containers = <Widget>[];
   //
@@ -447,29 +448,6 @@ class MyHomePageState extends State<MyHomePage> {
   //     }
   //   }
   //
-  //   // containers.add(Padding(
-  //   //     padding: const EdgeInsets.symmetric(horizontal: 15),
-  //   //     child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-  //   //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-  //   //         const Text('Часы'),
-  //   //         NumberPicker(
-  //   //             minValue: 0,
-  //   //             maxValue: 24,
-  //   //             value: 0,
-  //   //             axis: Axis.vertical,
-  //   //             onChanged: (_) {}),
-  //   //       ]),
-  //   //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-  //   //         const Text('Минуты'),
-  //   //         NumberPicker(
-  //   //             minValue: 0,
-  //   //             maxValue: 60,
-  //   //             value: 0,
-  //   //             axis: Axis.vertical,
-  //   //             onChanged: (_) {})
-  //   //       ])
-  //   //     ])));
-  //
   //   return ListView(
   //     padding: const EdgeInsets.all(8),
   //     children: <Widget>[
@@ -500,9 +478,11 @@ class MyHomePageState extends State<MyHomePage> {
     if (_connectedDevice != null) {
       return ConnectedDeviceView(services: _services);
     }
-    return AvailableDevicesList(
-        deviceList: widget.devicesList,
-        onDeviceConnectButtonTap: onDeviceConnectButtonTap);
+    return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: AvailableDeviceList(
+            deviceList: widget.devicesList,
+            onDeviceConnectButtonTap: onDeviceConnectButtonTap));
   }
 
   @override

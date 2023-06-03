@@ -19,29 +19,6 @@ class ConnectedDeviceView extends StatefulWidget {
   final Map<Guid, List<int>> readValues = <Guid, List<int>>{};
   final _writeController = TextEditingController();
 
-  // containers.add(Padding(
-  //     padding: const EdgeInsets.symmetric(horizontal: 15),
-  //     child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-  //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-  //         const Text('Часы'),
-  //         NumberPicker(
-  //             minValue: 0,
-  //             maxValue: 24,
-  //             value: 0,
-  //             axis: Axis.vertical,
-  //             onChanged: (_) {}),
-  //       ]),
-  //       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-  //         const Text('Минуты'),
-  //         NumberPicker(
-  //             minValue: 0,
-  //             maxValue: 60,
-  //             value: 0,
-  //             axis: Axis.vertical,
-  //             onChanged: (_) {})
-  //       ])
-  //     ])));
-
   @override
   ConnectedDeviceViewState createState() => ConnectedDeviceViewState();
 }
@@ -70,7 +47,6 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   void notificationsSubscribe(BluetoothCharacteristic characteristic) async {
     notificationsStream = characteristic.value.listen((value) {
       if (value.isNotEmpty) {
-        print(value);
         setState(() {
           widget.readValues[characteristic.uuid] = value;
         });
@@ -113,7 +89,6 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
       }
     });
     await characteristic.setNotifyValue(true);
-    print('subscriber initialized');
   }
 
   void setupListeners() {
@@ -185,12 +160,34 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
     final selectedActiveTime = await showTimePicker(
         context: context,
         helpText: "Время в открытом положении",
-        initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+        initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+        builder: (BuildContext context, Widget? child) {
+          return Theme(
+              data: Theme.of(context),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(alwaysUse24HourFormat: true),
+                    child: child!),
+              ));
+        });
 
     final selectedDelayTime = await showTimePicker(
         context: context,
         helpText: "Время в закрытом положении",
-        initialTime: TimeOfDay.fromDateTime(DateTime.now()));
+        initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+        builder: (BuildContext context, Widget? child) {
+          return Theme(
+              data: Theme.of(context),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(alwaysUse24HourFormat: true),
+                    child: child!),
+              ));
+        });
 
     if (selectedActiveTime != null && selectedDelayTime != null) {
       var activeTimeSeconds =
@@ -243,7 +240,6 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
             [...prefix, ...activeTimeBytes, ...delayTimeBytes, ...postfix]);
       }
     }
-    print('set schedule');
   }
 
   void onScheduleCheckboxChange(bool? _) async {
@@ -254,52 +250,131 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
     }
   }
 
-  // List<BluetoothCharacteristic> collectBluetoothCharacteristics() {
-  //   for (var service in widget._services) {
-  //     List<Widget> characteristicsWidget = <Widget>[];
-  //
-  //     for (BluetoothCharacteristic characteristic in service.characteristics) {
-  //       if (characteristic.properties.write ||
-  //           characteristic.properties.read ||
-  //           characteristic.properties.notify) {
-  //         characteristicsWidget.add(
-  //           Align(
-  //             alignment: Alignment.centerLeft,
-  //             child: Column(
-  //               children: <Widget>[
-  //                 Row(
-  //                   children: <Widget>[
-  //                     Text(characteristic.uuid.toString(),
-  //                         style: const TextStyle(fontWeight: FontWeight.bold)),
-  //                   ],
-  //                 ),
-  //                 Row(
-  //                   children: <Widget>[
-  //                     ..._buildReadWriteNotifyButton(characteristic),
-  //                   ],
-  //                 ),
-  //                 Row(
-  //                   children: <Widget>[
-  //                     Text(
-  //                         '${String.fromCharCodes(widget.readValues[characteristic.uuid] ?? [])}${widget.readValues[characteristic.uuid] ?? []}')
-  //                   ],
-  //                 ),
-  //                 const Divider(),
-  //               ],
-  //             ),
-  //           ),
-  //         );
-  //       }
-  //     }
-  //     if (characteristicsWidget.isNotEmpty) {
-  //       containers.add(
-  //         ExpansionTile(
-  //             title: Text(service.uuid.toString()),
-  //             children: characteristicsWidget),
-  //       );
-  //     }
-  //   }
-  // }
+  List<ButtonTheme> _buildReadWriteNotifyButton(
+      BluetoothCharacteristic characteristic) {
+    List<ButtonTheme> buttons = <ButtonTheme>[];
+
+    if (characteristic.properties.read) {
+      buttons.add(
+        ButtonTheme(
+          minWidth: 10,
+          height: 20,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: TextButton(
+              child:
+                  const Text('Обновить', style: TextStyle(color: Colors.blue)),
+              onPressed: () async {
+                widget.readValues[characteristic.uuid] =
+                    await characteristic.read();
+              },
+            ),
+          ),
+        ),
+      );
+    }
+    if (characteristic.properties.write) {
+      buttons.add(
+        ButtonTheme(
+          minWidth: 10,
+          height: 20,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: ElevatedButton(
+              child: const Text('Отправить',
+                  style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                await showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: const Text("Отправить"),
+                        content: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: widget._writeController,
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            child: const Text("Отправить"),
+                            onPressed: () {
+                              characteristic.write(utf8
+                                  .encode(widget._writeController.value.text));
+                              Navigator.pop(context);
+                            },
+                          ),
+                          TextButton(
+                            child: const Text("Закрыть"),
+                            onPressed: () {
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      );
+                    });
+              },
+            ),
+          ),
+        ),
+      );
+    }
+    if (characteristic.properties.notify) {
+      buttons.add(
+        ButtonTheme(
+          minWidth: 10,
+          height: 20,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: ElevatedButton(
+              child: const Text('Получение данных',
+                  style: TextStyle(color: Colors.white)),
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    return buttons;
+  }
+
+  List<Widget> _buildServiceCharacteristics(List<BluetoothService> services) {
+    return services
+        .map((service) => ExpansionTile(
+            title: Text(service.uuid.toString()),
+            children: service.characteristics
+                .where((characteristic) =>
+                    characteristic.properties.write ||
+                    characteristic.properties.read ||
+                    characteristic.properties.notify)
+                .map(
+                  (characteristic) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(characteristic.uuid.toString(),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Row(
+                        children: _buildReadWriteNotifyButton(characteristic),
+                      ),
+                      Row(
+                        children: [
+                          Text(String.fromCharCodes(
+                              widget.readValues[characteristic.uuid] ?? [])),
+                          Text(
+                              '${widget.readValues[characteristic.uuid] ?? []}')
+                        ],
+                      ),
+                      const Divider(),
+                    ],
+                  ),
+                )
+                .toList()))
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +399,10 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
         Schedule(
             isScheduleEnabled: _isScheduleEnabled,
             onSetScheduleButtonTap: onSetScheduleButtonTap,
-            onScheduleCheckboxChange: onScheduleCheckboxChange)
+            onScheduleCheckboxChange: onScheduleCheckboxChange),
+        ExpansionTile(
+            title: const Text('Другие характеристики'),
+            children: _buildServiceCharacteristics(widget.services))
       ],
     );
   }

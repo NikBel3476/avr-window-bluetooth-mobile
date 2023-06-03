@@ -14,8 +14,8 @@ class AvailableDeviceList extends StatelessWidget {
         itemCount: deviceList.length,
         itemBuilder: (context, i) {
           var device = deviceList[i];
-          return SizedBox(
-            height: 50,
+          return Padding(
+            padding: const EdgeInsets.all(4),
             child: Row(
               children: <Widget>[
                 Expanded(
