@@ -6,37 +6,39 @@ class AvailableDeviceList extends StatelessWidget {
       {super.key, required this.deviceList, this.onDeviceConnectButtonTap});
 
   final List<BluetoothDevice> deviceList;
-  final Function(BluetoothDevice)? onDeviceConnectButtonTap;
+  final Function(BuildContext, BluetoothDevice)? onDeviceConnectButtonTap;
 
   @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-        itemCount: deviceList.length,
-        itemBuilder: (context, i) {
-          var device = deviceList[i];
-          return Padding(
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    children: <Widget>[
-                      Text(device.name == ''
-                          ? '(неизвестное устройство)'
-                          : device.name),
-                      Text(device.id.toString()),
-                    ],
-                  ),
-                ),
-                TextButton(
-                    child: const Text(
-                      'Подключиться',
-                      style: TextStyle(color: Colors.blue),
+  Widget build(BuildContext context) => StreamBuilder<List<ScanResult>>(
+      stream: FlutterBluePlus.instance.scanResults,
+      initialData: const [],
+      builder: (c, snapshot) => Column(
+          children: snapshot.data!
+              .map((result) => Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            children: <Widget>[
+                              Text(result.device.name == ''
+                                  ? '(неизвестное устройство)'
+                                  : result.device.name),
+                              Text(result.device.id.toString()),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                            onPressed: result.advertisementData.connectable
+                                ? () => onDeviceConnectButtonTap?.call(
+                                    context, result.device)
+                                : null,
+                            child: const Text(
+                              'Подключиться',
+                              style: TextStyle(color: Colors.blue),
+                            )),
+                      ],
                     ),
-                    onPressed: () => onDeviceConnectButtonTap?.call(device)),
-              ],
-            ),
-          );
-        });
-  }
+                  ))
+              .toList()));
 }

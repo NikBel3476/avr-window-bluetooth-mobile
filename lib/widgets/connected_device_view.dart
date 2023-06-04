@@ -12,10 +12,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'mcu_time.dart';
 
 class ConnectedDeviceView extends StatefulWidget {
-  ConnectedDeviceView({super.key, required this.services});
+  ConnectedDeviceView({super.key, required this.device});
 
-  final List<BluetoothService> services;
-  final List<Widget> containers = <Widget>[];
+  final BluetoothDevice device;
   final Map<Guid, List<int>> readValues = <Guid, List<int>>{};
   final _writeController = TextEditingController();
 
@@ -35,9 +34,13 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
 
   void initWriteHandler(BluetoothCharacteristic characteristic) {
     writeHandler = characteristic;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      writeHandler?.write(utf8.encode("t;"));
+    });
   }
 
   void readCharacteristic(BluetoothCharacteristic characteristic) async {
+    await characteristic.setNotifyValue(true);
     var value = await characteristic.read();
     setState(() {
       widget.readValues[characteristic.uuid] = value;
@@ -45,6 +48,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   }
 
   void notificationsSubscribe(BluetoothCharacteristic characteristic) async {
+    await characteristic.setNotifyValue(true);
     notificationsStream = characteristic.value.listen((value) {
       if (value.isNotEmpty) {
         setState(() {
@@ -88,11 +92,11 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
         }
       }
     });
-    await characteristic.setNotifyValue(true);
   }
 
-  void setupListeners() {
-    for (var service in widget.services) {
+  void getServices() async {
+    var services = await widget.device.discoverServices();
+    for (var service in services) {
       for (var characteristic in service.characteristics) {
         if (characteristic.properties.read) {
           readCharacteristic(characteristic);
@@ -110,10 +114,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   @override
   void initState() {
     super.initState();
-    setupListeners();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      writeHandler?.write(utf8.encode("t;"));
-    });
+    getServices();
   }
 
   @override
@@ -121,6 +122,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
     super.dispose();
     _timer?.cancel();
     notificationsStream?.cancel();
+    widget.device.disconnect();
   }
 
   void openWindowButtonHandler() {
@@ -143,6 +145,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
     var timeOfDay = TimeOfDay.fromDateTime(_timeState);
     final selectedTime = await showTimePicker(
       context: context,
+      helpText: "Выберите время",
       initialTime: timeOfDay,
     );
     if (selectedTime != null &&
@@ -173,35 +176,37 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
               ));
         });
 
-    final selectedDelayTime = await showTimePicker(
-        context: context,
-        helpText: "Время в закрытом положении",
-        initialTime: TimeOfDay.fromDateTime(DateTime.now()),
-        builder: (BuildContext context, Widget? child) {
-          return Theme(
-              data: Theme.of(context),
-              child: Directionality(
-                textDirection: TextDirection.ltr,
-                child: MediaQuery(
-                    data: MediaQuery.of(context)
-                        .copyWith(alwaysUse24HourFormat: true),
-                    child: child!),
-              ));
-        });
+    if (selectedActiveTime != null) {
+      final selectedDelayTime = await showTimePicker(
+          context: context,
+          helpText: "Время в закрытом положении",
+          initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+          builder: (BuildContext context, Widget? child) {
+            return Theme(
+                data: Theme.of(context),
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: MediaQuery(
+                      data: MediaQuery.of(context)
+                          .copyWith(alwaysUse24HourFormat: true),
+                      child: child!),
+                ));
+          });
 
-    if (selectedActiveTime != null && selectedDelayTime != null) {
-      var activeTimeSeconds =
-          selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
-      var delayTimeSeconds =
-          selectedDelayTime.hour * 3600 + selectedDelayTime.minute * 60;
-      var activeTimeBytes = Uint8List(4)
-        ..buffer.asByteData().setInt32(0, activeTimeSeconds, Endian.big);
-      var delayTimeBytes = Uint8List(4)
-        ..buffer.asByteData().setInt32(0, delayTimeSeconds, Endian.big);
-      var prefix = Uint8List.fromList(utf8.encode('r'));
-      var postfix = Uint8List.fromList(utf8.encode(';'));
-      await writeHandler?.write(
-          [...prefix, ...activeTimeBytes, ...delayTimeBytes, ...postfix]);
+      if (selectedDelayTime != null) {
+        var activeTimeSeconds =
+            selectedActiveTime.hour * 3600 + selectedActiveTime.minute * 60;
+        var delayTimeSeconds =
+            selectedDelayTime.hour * 3600 + selectedDelayTime.minute * 60;
+        var activeTimeBytes = Uint8List(4)
+          ..buffer.asByteData().setInt32(0, activeTimeSeconds, Endian.big);
+        var delayTimeBytes = Uint8List(4)
+          ..buffer.asByteData().setInt32(0, delayTimeSeconds, Endian.big);
+        var prefix = Uint8List.fromList(utf8.encode('r'));
+        var postfix = Uint8List.fromList(utf8.encode(';'));
+        await writeHandler?.write(
+            [...prefix, ...activeTimeBytes, ...delayTimeBytes, ...postfix]);
+      }
     }
   }
 
@@ -378,32 +383,39 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(8),
-      children: <Widget>[
-        // ...containers,
-        WindowControls(
-            onOpenButtonTap: openWindowButtonHandler,
-            onCloseButtonTap: closeWindowButtonHandler),
-        WindowState(
-            windowState: _windowState,
-            onUpdateButtonTap: updateWindowStateButtonHandler),
-        McuTime(
-            time: _timeState,
-            onUpdateButtonTap: updateMcuTimeButtonHandler,
-            onSetTimeButtonTap: onSetTimeButtonTap),
-        TimeMode(
-            isTimeModeEnabled: _isTimeModeEnabled,
-            onSetTimeModeButtonTap: onSetTimeModeButtonTap,
-            onTimeModeCheckboxChange: onTimeModeCheckboxChange),
-        Schedule(
-            isScheduleEnabled: _isScheduleEnabled,
-            onSetScheduleButtonTap: onSetScheduleButtonTap,
-            onScheduleCheckboxChange: onScheduleCheckboxChange),
-        ExpansionTile(
-            title: const Text('Другие характеристики'),
-            children: _buildServiceCharacteristics(widget.services))
-      ],
-    );
+    return Scaffold(
+        appBar: AppBar(title: Text(widget.device.name)),
+        body: ListView(
+          padding: const EdgeInsets.all(8),
+          children: <Widget>[
+            // ...containers,
+            WindowControls(
+                onOpenButtonTap: openWindowButtonHandler,
+                onCloseButtonTap: closeWindowButtonHandler),
+            WindowState(
+                windowState: _windowState,
+                onUpdateButtonTap: updateWindowStateButtonHandler),
+            McuTime(
+                time: _timeState,
+                onUpdateButtonTap: updateMcuTimeButtonHandler,
+                onSetTimeButtonTap: onSetTimeButtonTap),
+            TimeMode(
+                isTimeModeEnabled: _isTimeModeEnabled,
+                onSetTimeModeButtonTap: onSetTimeModeButtonTap,
+                onTimeModeCheckboxChange: onTimeModeCheckboxChange),
+            Schedule(
+                isScheduleEnabled: _isScheduleEnabled,
+                onSetScheduleButtonTap: onSetScheduleButtonTap,
+                onScheduleCheckboxChange: onScheduleCheckboxChange),
+            StreamBuilder<List<BluetoothService>>(
+                stream: widget.device.services,
+                initialData: const [],
+                builder: (c, snapshot) {
+                  return ExpansionTile(
+                      title: const Text('Другие характеристики'),
+                      children: _buildServiceCharacteristics(snapshot.data!));
+                })
+          ],
+        ));
   }
 }
