@@ -12,7 +12,7 @@ class AvailableDeviceList extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<List<ScanResult>>(
       stream: FlutterBluePlus.instance.scanResults,
       initialData: const [],
-      builder: (c, snapshot) => Column(
+      builder: (c, snapshot) => ListView(
           children: snapshot.data!
               .map((result) => Padding(
                     padding: const EdgeInsets.all(4),
