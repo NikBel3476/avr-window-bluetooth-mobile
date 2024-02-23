@@ -1,31 +1,17 @@
-import 'dart:io';
+import 'dart:async';
 
+import 'package:avr_bluetooth/screens/bluetooth_off_screen.dart';
 import 'package:avr_bluetooth/widgets/available_device_list.dart';
-import 'package:avr_bluetooth/widgets/connected_device_view.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 void main() {
-  if (Platform.isAndroid) {
-    WidgetsFlutterBinding.ensureInitialized();
-    [
-      Permission.location,
-      Permission.storage,
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan
-    ].request().then((status) {
-      runApp(const MyApp());
-    });
-  } else {
-    runApp(const MyApp());
-  }
+  FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
+  runApp(const AvrWindowApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AvrWindowApp extends StatelessWidget {
+  const AvrWindowApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -33,61 +19,54 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           primarySwatch: Colors.blue,
         ),
-        home: MyHomePage(title: 'AVR window'),
+        home: MainPage(title: 'AVR window'),
       );
 }
 
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key? key, required this.title}) : super(key: key);
+class MainPage extends StatefulWidget {
+  MainPage({Key? key, required this.title}) : super(key: key);
 
   final String title;
-  final FlutterBluePlus flutterBlue = FlutterBluePlus.instance;
   final List<BluetoothDevice> devicesList = <BluetoothDevice>[];
   final Map<Guid, List<int>> readValues = <Guid, List<int>>{};
 
   @override
-  MyHomePageState createState() => MyHomePageState();
+  MainPageState createState() => MainPageState();
 }
 
-class MyHomePageState extends State<MyHomePage> {
+class MainPageState extends State<MainPage> {
+  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+
+  late StreamSubscription<BluetoothAdapterState> _adapterStateSubscription;
+
   @override
   void initState() {
     super.initState();
-    widget.flutterBlue.startScan();
+    _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
+      _adapterState = state;
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _adapterStateSubscription.cancel();
     super.dispose();
-    widget.flutterBlue.stopScan();
   }
 
-  void onDeviceConnectButtonTap(
-      BuildContext context, BluetoothDevice device) async {
-    widget.flutterBlue.stopScan();
-    try {
-      await device.connect();
-    } on PlatformException catch (e) {
-      if (e.code != 'already_connected') {
-        rethrow;
-      }
-    }
-    await Navigator.of(context).push(MaterialPageRoute(builder: (context) {
-      return ConnectedDeviceView(device: device);
-    }));
-  }
-
-  Widget _buildView() => Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: AvailableDeviceList(
-          deviceList: widget.devicesList,
-          onDeviceConnectButtonTap: onDeviceConnectButtonTap));
+  Widget _buildView() => const Padding(
+      padding: EdgeInsets.only(top: 8), child: AvailableDeviceList());
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title),
-        ),
-        body: _buildView(),
-      );
+  Widget build(BuildContext context) =>
+      _adapterState == BluetoothAdapterState.on
+          ? Scaffold(
+              appBar: AppBar(
+                title: Text(widget.title),
+              ),
+              body: _buildView(),
+            )
+          : BluetoothOffScreen(adapterState: _adapterState);
 }

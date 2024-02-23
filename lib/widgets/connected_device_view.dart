@@ -27,10 +27,25 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   late final BluetoothCharacteristic? writeHandler;
   late final BluetoothCharacteristic? readHandler;
   late final StreamSubscription<List<int>>? notificationsStream;
+  List<BluetoothService> services = [];
   String _windowState = "Нет данных";
   DateTime _timeState = DateTime.now();
   bool _isTimeModeEnabled = false;
   bool _isScheduleEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    getServices();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _timer?.cancel();
+    notificationsStream?.cancel();
+    widget.device.disconnect();
+  }
 
   void initWriteHandler(BluetoothCharacteristic characteristic) {
     writeHandler = characteristic;
@@ -95,7 +110,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   }
 
   void getServices() async {
-    var services = await widget.device.discoverServices();
+    services = await widget.device.discoverServices();
     for (var service in services) {
       for (var characteristic in service.characteristics) {
         if (characteristic.properties.read) {
@@ -109,20 +124,6 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
         }
       }
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    getServices();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    _timer?.cancel();
-    notificationsStream?.cancel();
-    widget.device.disconnect();
   }
 
   void openWindowButtonHandler() {
@@ -384,7 +385,7 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(title: Text(widget.device.name)),
+        appBar: AppBar(title: Text(widget.device.platformName)),
         body: ListView(
           padding: const EdgeInsets.all(8),
           children: <Widget>[
@@ -407,14 +408,9 @@ class ConnectedDeviceViewState extends State<ConnectedDeviceView> {
                 isScheduleEnabled: _isScheduleEnabled,
                 onSetScheduleButtonTap: onSetScheduleButtonTap,
                 onScheduleCheckboxChange: onScheduleCheckboxChange),
-            StreamBuilder<List<BluetoothService>>(
-                stream: widget.device.services,
-                initialData: const [],
-                builder: (c, snapshot) {
-                  return ExpansionTile(
-                      title: const Text('Другие характеристики'),
-                      children: _buildServiceCharacteristics(snapshot.data!));
-                })
+            ExpansionTile(
+                title: const Text('Другие характеристики'),
+                children: _buildServiceCharacteristics(services))
           ],
         ));
   }
